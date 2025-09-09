@@ -1,0 +1,943 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Cobranças</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    
+    <style>
+        :root {
+            --background: #030712;
+            --surface: #111827;
+            --primary: #00F5A0;
+            --primary-hover: #00D88F;
+            --text-primary: #F0F4F8;
+            --text-secondary: #8B949E;
+            --border: #212B3F;
+            --sidebar-width: 260px;
+            
+            /* Status de Pagamento */
+            --status-pago: #00F5A0;
+            --status-pendente: #FF4D6D;
+            --status-parcial: #FFC107;
+
+            /* Status de Cobrança */
+            --status-enviada: #3B82F6;
+            --status-aguardando: #6B7280;
+            --status-falhou: #EF4444;
+
+            --success: #00F5A0;
+            --error: #FF4D6D;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: auto;
+            min-height: 100%;
+        }
+        
+        #particles-js {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--background);
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .app-layout, #login-screen {
+            display: none; 
+        }
+
+        body.show-dashboard .app-layout { 
+            display: flex;
+        }
+        
+        body.show-login #login-screen { 
+            display: flex; 
+        }
+        
+        .page-content {
+            display: none;
+        }
+        .page-content.active {
+            display: block;
+        }
+
+        /* --- TELA DE LOGIN --- */
+        #login-screen {
+            width: 100%;
+            height: 100vh;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+        }
+        .login-box { max-width: 450px; }
+        .login-box h1 { font-size: 3rem; font-weight: 800; line-height: 1.2; }
+        .login-box h1 span { color: var(--primary); }
+        .login-box p { margin-top: 1rem; color: var(--text-secondary); font-size: 1.1rem; }
+        .login-form { margin-top: 2.5rem; display: flex; flex-direction: column; gap: 1rem; }
+        .login-form input { background-color: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 14px; color: var(--text-primary); font-size: 1rem; }
+        .login-form input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(0, 245, 160, 0.2); }
+        .login-form .btn { padding: 14px; font-size: 1rem; }
+        .forgot-password { margin-top: 1rem; font-size: 0.9rem; color: var(--text-secondary); }
+        .forgot-password a { color: var(--primary); text-decoration: none; }
+        .forgot-password a:hover { text-decoration: underline; }
+
+        /* --- LAYOUT CORRIGIDO --- */
+        .sidebar {
+            width: var(--sidebar-width);
+            height: 100vh;
+            background-color: var(--surface);
+            border-right: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            display: flex;
+            flex-direction: column;
+            padding: 25px;
+            z-index: 10;
+            flex-shrink: 0;
+        }
+        
+        .main-content {
+            flex: 1;
+            min-width: 0;
+            padding: 30px;
+        }
+
+        .sidebar-header { display: flex; align-items: center; gap: 15px; margin-bottom: 40px; }
+        #ai-animation-canvas { width: 40px; height: 40px; }
+        .sidebar-header h2 { font-size: 1.5rem; color: var(--text-primary); }
+        .sidebar-nav ul { list-style: none; }
+        .sidebar-nav li a { display: flex; align-items: center; gap: 15px; padding: 12px 15px; border-radius: 8px; text-decoration: none; color: var(--text-secondary); font-weight: 500; transition: background-color 0.2s ease, color 0.2s ease; cursor: pointer; }
+        .sidebar-nav li a svg { width: 22px; height: 22px; }
+        .sidebar-nav li a:hover { background-color: rgba(0, 245, 160, 0.1); color: var(--primary); }
+        .sidebar-nav li a.active { background-color: var(--primary); color: #0A0F1A; font-weight: 600; }
+        .sidebar-nav li a.active svg { stroke: #0A0F1A; }
+        .container { width: 100%; max-width: 1600px; margin: 0 auto; }
+
+        /* --- CONTROLES HEADER --- */
+        .header-controls { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+        .panel-title { font-size: 1.6rem; font-weight: 600; }
+        .header-actions { display: flex; align-items: center; gap: 20px; }
+        .view-toggle { display: flex; background-color: var(--background); border-radius: 8px; border: 1px solid var(--border); overflow: hidden; }
+        .toggle-btn { padding: 8px 16px; background-color: transparent; border: none; color: var(--text-secondary); cursor: pointer; font-weight: 500; transition: background-color 0.2s, color 0.2s; }
+        .toggle-btn.active { background-color: var(--primary); color: var(--background); }
+        #year-filter { background-color: var(--surface); border: 1px solid var(--border); color: var(--text-primary); border-radius: 8px; padding: 8px 12px; font-size: 0.9rem; }
+        .btn { padding: 10px 20px; font-size: 0.95rem; font-weight: 600; color: #0A0F1A; background-color: var(--primary); border: none; border-radius: 8px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
+        .btn:hover { background-color: var(--primary-hover); }
+        .profile-menu { position: relative; }
+        .profile-btn { width: 40px; height: 40px; border-radius: 50%; background-color: var(--surface); border: 1px solid var(--border); cursor: pointer; display: flex; align-items: center; justify-content: center; }
+        .profile-btn svg { stroke: var(--text-secondary); }
+        .profile-dropdown { display: none; position: absolute; top: calc(100% + 10px); right: 0; background-color: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; width: 150px; box-shadow: 0 5px 15px rgba(0,0,0,0.2); }
+        .profile-menu.active .profile-dropdown { display: block; }
+        .profile-dropdown a { display: block; padding: 10px 15px; color: var(--text-secondary); text-decoration: none; font-size: 0.9rem; }
+        .profile-dropdown a:hover { background-color: rgba(0, 245, 160, 0.1); color: var(--primary); }
+
+        /* --- ESTATÍSTICAS --- */
+        .stats-header { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 30px; }
+        .stats-group h2 { font-size: 1rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stats-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 20px; }
+        .stat-card { background-color: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+        .stat-card h3 { font-size: 0.9rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 8px; }
+        .stat-card p { font-size: 1.6rem; font-weight: 700; color: var(--text-primary); }
+        .stat-card.recebido p { color: var(--status-pago); }
+        .stat-card.inadimplente p { color: var(--status-pendente); }
+        
+        /* --- TABELA CORRIGIDA --- */
+        .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.2); overflow: visible; }
+        .table-scroller { overflow-x: auto; overflow-y: visible; width: 100%; }
+        .table { width: 100%; border-collapse: collapse; table-layout: auto; white-space: nowrap; }
+        .table thead th { position: sticky; top: 0; z-index: 3; background: #0A0F1A; color: var(--text-secondary); text-transform: uppercase; letter-spacing: .5px; font-size: .8rem; padding: 12px 10px; border-bottom: 1px solid var(--border); }
+        .table td { padding: 14px 10px; border-bottom: 1px solid var(--border); font-size: .95rem; }
+        .table tr:last-child td { border-bottom: none; }
+        .table thead th:first-child, .table tbody td:first-child { position: sticky; left: 0; z-index: 4; }
+        .table tbody td:first-child { background: var(--surface); font-weight: 600; }
+        .table tbody tr:hover td { background: #1F2937; }
+        .status { display: inline-block; min-width: 84px; text-align: center; font-weight: 700; border-radius: 8px; padding: 6px 10px; cursor: pointer; user-select: none; }
+        .st-pago { background: var(--status-pago); color: #0A0F1A; }
+        .st-pendente { background: var(--status-pendente); color: #fff; }
+        .st-parcial { background: var(--status-parcial); color: #0A0F1A; }
+        .st-enviada { background: var(--status-enviada); color: #fff; }
+        .st-aguardando { background: var(--status-aguardando); color: #fff; }
+        .st-falhou { background: var(--status-falhou); color: #fff; }
+        .status-wrap { position: relative; display: inline-block; }
+        .status-menu { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 8px); width: 140px; background: #2c333c; border: 1px solid var(--border); border-radius: 10px; padding: 6px; display: none; z-index: 10; box-shadow: 0 12px 24px rgba(0,0,0,.3); }
+        .status-wrap.open .status-menu { display: block; }
+        .status-opt { padding: 8px 10px; border-radius: 8px; color: var(--text-primary); font-weight: 600; cursor: pointer; }
+        .status-opt:hover { background: rgba(0,245,160,.15); }
+
+        /* --- MODAIS, NOTIFICAÇÕES, ETC --- */
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.6); animation: fadeIn 0.3s; }
+        .modal-content { background-color: var(--surface); margin: 10% auto; padding: 30px; border: 1px solid var(--border); width: 90%; max-width: 600px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); animation: slideUp 0.4s; }
+        #form-cliente .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        #form-cliente .full-width { grid-column: 1 / -1; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 15px; border-bottom: 1px solid var(--border); margin-bottom: 25px; }
+        .modal-header h2 { font-size: 1.5rem; }
+        .close-btn { color: var(--text-secondary); font-size: 28px; font-weight: bold; cursor: pointer; transition: color 0.2s; }
+        .close-btn:hover, .close-btn:focus { color: var(--text-primary); }
+        .input-group { margin-bottom: 0; }
+        .input-group label { display: block; font-size: 0.9rem; font-weight: 500; color: var(--text-secondary); margin-bottom: 8px; }
+        .input-group input { width: 100%; padding: 12px 15px; font-size: 1rem; background-color: var(--background); border: 1px solid var(--border); border-radius: 8px; color: var(--text-primary); transition: border-color 0.2s ease, box-shadow 0.2s ease; }
+        .input-group input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(0, 245, 160, 0.2); }
+        @keyframes fadeIn { from {opacity: 0;} to {opacity: 1;} }
+        @keyframes slideUp { from {transform: translateY(30px); opacity: 0;} to {transform: translateY(0); opacity: 1;} }
+        @keyframes slideDown { from {transform: translateY(0); opacity: 1;} to {transform: translateY(30px); opacity: 0;} }
+        .notification-container { position: fixed; bottom: 20px; right: 20px; z-index: 1001; display: flex; flex-direction: column; gap: 10px; }
+        .toast { color: #0A0F1A; padding: 15px 20px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.25); opacity: 0; transform: translateX(120%); animation: slideIn 0.4s forwards, fadeOut 0.4s 8s forwards; font-weight: 600; }
+        .toast.success { background-color: var(--success); }
+        .toast.error { background-color: var(--error); color: white; }
+        @keyframes slideIn { to { opacity: 1; transform: translateX(0); } }
+        @keyframes fadeOut { to { opacity: 0; transform: translateX(120%); } }
+        
+        /* --- ESTILOS PÁGINA EVO API --- */
+        .evo-api-page .card { background-color: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 25px; margin-bottom: 30px; }
+        .evo-api-page h2, .evo-api-page h3 { font-size: 1.6rem; font-weight: 600; margin-bottom: 20px; }
+        .evo-api-page h3 { font-size: 1.2rem; color: var(--text-secondary); }
+        .evo-api-page .form-inline { display: flex; gap: 15px; align-items: flex-end; }
+        .evo-api-page .form-inline .input-group { flex-grow: 1; }
+        .evo-api-page .form-inline .btn { height: 47px; }
+        #qrcode-container { text-align: center; padding: 30px; min-height: 300px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        #qrcode-container img { max-width: 250px; border: 5px solid var(--surface); border-radius: 10px; margin-bottom: 20px; }
+        #instance-status { font-weight: 500; color: var(--text-secondary); transition: color 0.3s ease, font-size 0.3s ease; }
+        #instance-status.connection-success { font-size: 1.5rem; color: var(--status-pago); font-weight: 700; }
+        #event-log { background-color: #000; border: 1px solid var(--border); border-radius: 8px; padding: 15px; height: 150px; overflow-y: auto; font-family: monospace; font-size: 0.8rem; color: var(--text-secondary); margin-top: 20px; }
+        #event-log p { margin: 0 0 5px 0; border-bottom: 1px solid #222; padding-bottom: 5px; }
+        #saved-instances-list { display: flex; flex-direction: column; gap: 15px; margin-top: 10px; }
+        .instance-item { display: flex; justify-content: space-between; align-items: center; background-color: var(--background); padding: 15px; border-radius: 8px; border: 1px solid var(--border); }
+        .instance-item-info span { display: block; }
+        .instance-name { font-weight: 600; color: var(--text-primary); }
+        .instance-status { font-size: 0.85rem; font-weight: 500; }
+        .instance-status.status-connected { color: var(--status-pago); }
+        .instance-status.status-disconnected { color: var(--status-pendente); }
+        .instance-actions .btn { padding: 6px 12px; font-size: 0.8rem; }
+    </style>
+</head>
+<body class="show-login">
+
+    <div id="particles-js"></div>
+
+    <div id="login-screen">
+        <div class="login-box">
+            <h1>Controle suas finanças, <span>cliente a cliente.</span></h1>
+            <p>Acesse seu painel para gerenciar clientes, pagamentos e visualizar a saúde financeira do seu negócio.</p>
+            <form class="login-form" id="login-form">
+                <input type="text" id="login-email" placeholder="usuário" required>
+                <input type="password" id="login-password" placeholder="senha" required>
+                <button type="submit" class="btn">Entrar</button>
+            </form>
+            <p class="forgot-password">Esqueceu sua senha? <a href="#">Recupere aqui</a>.</p>
+        </div>
+    </div>
+
+    <div class="app-layout">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <canvas id="ai-animation-canvas"></canvas>
+                <h2>Control Cobranças</h2>
+            </div>
+            <nav class="sidebar-nav">
+                <ul>
+                    <li><a data-page="dashboard" class="active"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg><span>Dashboard</span></a></li>
+                    <li><a data-page="clientes"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Clientes</span></a></li>
+                    <li><a data-page="evo-api"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect x="4" y="12" width="8" height="8" rx="2"/><path d="M8 12v1.5a2.5 2.5 0 0 0 5 0V12"/><path d="M20 12h-2a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h2v-4a2 2 0 0 1-2-2Z"/></svg><span>Evolution API</span></a></li>
+                    <li><a data-page="relatorios"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg><span>Relatórios</span></a></li>
+                    <li><a data-page="configuracoes"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 0 2l-.15.08a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1 0-2l.15-.08a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg><span>Configurações</span></a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <div id="dashboard-page" class="page-content active">
+                <div class="container">
+                    <div class="stats-header">
+                        <div class="stats-group">
+                            <h2 id="ano-acumulado-titulo">Acumulado do Ano</h2>
+                            <div class="stats-cards">
+                               <div class="stat-card"><h3>Faturamento Total</h3><p id="faturamento-anual">R$ 0,00</p></div>
+                               <div class="stat-card recebido"><h3>Total Recebido</h3><p id="total-recebido-anual">R$ 0,00</p></div>
+                               <div class="stat-card inadimplente"><h3>Inadimplência</h3><p id="total-inadimplente-anual">R$ 0,00</p></div>
+                            </div>
+                        </div>
+                         <div class="stats-group">
+                            <h2 id="mes-atual-titulo">Mês Atual</h2>
+                            <div class="stats-cards">
+                               <div class="stat-card"><h3>Previsto no Mês</h3><p id="previsto-mes">R$ 0,00</p></div>
+                               <div class="stat-card recebido"><h3>Recebido no Mês</h3><p id="recebido-mes">R$ 0,00</p></div>
+                               <div class="stat-card inadimplente"><h3>Inadimplente no Mês</h3><p id="inadimplente-mes">R$ 0,00</p></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="header-controls">
+                        <h1 class="panel-title">Acompanhamento Mensal</h1>
+                        <div class="header-actions">
+                            <div class="view-toggle" id="view-toggle">
+                                <button class="toggle-btn active" data-view="pagamento">Pagamento</button>
+                                <button class="toggle-btn" data-view="cobranca">Cobrança IA</button>
+                            </div>
+                            <select id="year-filter"></select>
+                            <button id="addClientBtn" class="btn">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+                                Adicionar Cliente
+                            </button>
+                            <div class="profile-menu">
+                                <button class="profile-btn" id="profile-btn"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></button>
+                                <div class="profile-dropdown">
+                                    <a href="#">Meu Perfil</a>
+                                    <a href="#" id="logout-btn">Sair</a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+            
+                    <section class="table-card">
+                        <div class="table-scroller">
+                            <table class="table" id="grid">
+                                <thead id="thead"></thead>
+                                <tbody id="tbody"></tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div>
+            </div>
+
+            <div id="evo-api-page" class="page-content evo-api-page">
+                 <div class="container">
+                    <div class="card">
+                        <h2>Criar Nova Instância</h2>
+                        <form class="form-inline" id="create-instance-form">
+                            <div class="input-group">
+                                <label for="instance-name">Nome da Instância</label>
+                                <input type="text" id="instance-name" placeholder="Ex: cobranca_empresa_x" required>
+                            </div>
+                            <button type="submit" class="btn">Criar Instância</button>
+                        </form>
+                    </div>
+                    <div class="card">
+                        <h2>Conexão</h2>
+                        <div id="qrcode-container">
+                            <p id="instance-status">Aguardando a criação de uma instância...</p>
+                        </div>
+                        <div id="event-log-container">
+                            <h3>Log de Eventos</h3>
+                            <div id="event-log"></div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h2>Instâncias Salvas</h2>
+                        <div id="saved-instances-list">
+                           <p>Nenhuma instância salva encontrada.</p>
+                        </div>
+                    </div>
+                 </div>
+            </div>
+             <div id="clientes-page" class="page-content">
+                 <div class="container">
+                    <h2>Página de Clientes (em construção)</h2>
+                 </div>
+            </div>
+             <div id="relatorios-page" class="page-content">
+                 <div class="container">
+                    <h2>Página de Relatórios (em construção)</h2>
+                 </div>
+            </div>
+             <div id="configuracoes-page" class="page-content">
+                 <div class="container">
+                    <h2>Página de Configurações (em construção)</h2>
+                 </div>
+            </div>
+
+        </main>
+    </div>
+
+    <div id="clientModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Cadastrar Novo Cliente</h2>
+                <span class="close-btn">&times;</span>
+            </div>
+            <form id="form-cliente">
+                <div class="form-grid">
+                    <div class="input-group full-width"><label for="empresa">Empresa</label><input type="text" id="empresa" placeholder="Ex: Mercadinho Alves Freitas LTDA" required></div>
+                    <div class="input-group full-width"><label for="nomeFantasia">Nome Fantasia</label><input type="text" id="nomeFantasia" placeholder="Ex: Mercadinho Alves Freitas" required></div>
+                    <div class="input-group"><label for="telefone">Telefone</label><input type="text" id="telefone" placeholder="Ex: (88) 99815-8008" required></div>
+                    <div class="input-group"><label for="email">Email</label><input type="email" id="email" placeholder="Ex: contato@email.com"></div>
+                    <div class="input-group"><label for="diaVencimento">Dia do Vencimento</label><input type="number" id="diaVencimento" placeholder="Ex: 10" min="1" max="31" required></div>
+                    <div class="input-group"><label for="valor">Valor da Cobrança (R$)</label><input type="number" id="valor" step="0.01" placeholder="Ex: 250.00" required></div>
+                    <div class="input-group full-width"><label for="duracaoContrato">Duração do Contrato (em meses)</label><input type="number" id="duracaoContrato" placeholder="Ex: 12" min="1" required></div>
+                </div>
+                <button type="submit" class="btn" style="width: 100%; margin-top: 20px;">Salvar Cliente</button>
+            </form>
+        </div>
+    </div>
+    
+    <div id="notification-container" class="notification-container"></div>
+    
+    <script src="https://cdn.jsdelivr.net/particles.js/2.0.0/particles.min.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const SUPABASE_URL = 'https://supabase.infodash.com.br';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.ewogICJyb2xlIjogImFub24iLAogICJpc3MiOiAic3VwYWJhc2UiLAogICJpYXQiOiAxNzE1MDUwODAwLAogICJleHAiOiAxODcyODE3MjAwCn0.BAmp3D2UEBQIUlhNGp5Q7sDMN3QLRyib7aztmMgH-_c';
+        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+            db: { schema: 'dbcobraai' }
+        });
+
+        // --- DOM Elements ---
+        const body = document.body;
+        const loginForm = document.getElementById('login-form');
+        const loginEmail = document.getElementById('login-email');
+        const loginPassword = document.getElementById('login-password');
+        const logoutBtn = document.getElementById('logout-btn');
+        const profileBtn = document.getElementById('profile-btn');
+        const profileMenu = document.querySelector('.profile-menu');
+        const navLinks = document.querySelectorAll('.sidebar-nav a');
+        const notificationContainer = document.getElementById('notification-container');
+        const modal = document.getElementById('clientModal');
+        const addClientBtn = document.getElementById('addClientBtn');
+        const closeBtn = document.querySelector('.close-btn');
+        const clientForm = document.getElementById('form-cliente');
+        
+        // --- EVO API Elements ---
+        const createInstanceForm = document.getElementById('create-instance-form');
+        const instanceNameInput = document.getElementById('instance-name');
+        const qrcodeContainer = document.getElementById('qrcode-container');
+        const eventLog = document.getElementById('event-log');
+        const savedInstancesList = document.getElementById('saved-instances-list');
+
+        let connectionInterval;
+
+        // --- Helper Functions ---
+        function showPage(pageId) {
+            document.querySelectorAll('.page-content').forEach(p => p.classList.remove('active'));
+            document.getElementById(`${pageId}-page`).classList.add('active');
+            navLinks.forEach(link => {
+                link.classList.toggle('active', link.dataset.page === pageId);
+            });
+            if (pageId === 'evo-api') {
+                loadAndDisplaySavedInstances();
+            }
+        }
+
+        function showNotification(message, type = 'success') {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            notificationContainer.appendChild(toast);
+            toast.addEventListener('animationend', () => toast.remove());
+        }
+
+        // --- MODAL CLIENTE ---
+        function openModal() { modal.style.display = 'block'; modal.querySelector('.modal-content').style.animation = 'slideUp 0.4s'; }
+        function closeModal() {
+            const modalContent = modal.querySelector('.modal-content');
+            modalContent.style.animation = 'slideDown 0.4s forwards';
+            setTimeout(() => { modal.style.display = 'none'; modalContent.style.animation = 'slideUp 0.4s'; clientForm.reset(); }, 300);
+        }
+        addClientBtn.onclick = openModal;
+        closeBtn.onclick = closeModal;
+        window.onclick = (event) => { if (event.target == modal) closeModal(); };
+        clientForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+             const novoCliente = {
+                empresa: document.getElementById('empresa').value.trim(),
+                nome_fantasia: document.getElementById('nomeFantasia').value.trim(),
+                telefone: document.getElementById('telefone').value.trim(),
+                email: document.getElementById('email').value.trim(),
+                dia_vencimento: parseInt(document.getElementById('diaVencimento').value),
+                valor_mensalidade: parseFloat(document.getElementById('valor').value),
+            };
+            const duracaoContrato = parseInt(document.getElementById('duracaoContrato').value);
+            if (isNaN(duracaoContrato) || duracaoContrato <= 0) {
+                showNotification('Por favor, insira uma duração de contrato válida.', 'error');
+                return;
+            }
+            try {
+                const { data: clienteData, error: clienteError } = await sb.from('clientes').insert(novoCliente).select('id').single();
+                if (clienteError) throw clienteError;
+                const newClientId = clienteData.id;
+                const mensalidadesParaInserir = [];
+                let dataCorrente = new Date();
+                for (let i = 0; i < duracaoContrato; i++) {
+                    mensalidadesParaInserir.push({
+                        cliente_id: newClientId,
+                        ano: dataCorrente.getFullYear(),
+                        mes: dataCorrente.getMonth() + 1,
+                        status_pagamento: 'Pendente',
+                        status_cobranca: 'Aguardando'
+                    });
+                    dataCorrente.setMonth(dataCorrente.getMonth() + 1);
+                }
+                if(mensalidadesParaInserir.length > 0) {
+                    const { error: mensalidadesError } = await sb.from('mensalidades').insert(mensalidadesParaInserir);
+                    if (mensalidadesError) throw mensalidadesError;
+                }
+                await loadData();
+                closeModal();
+                showNotification('Cliente e mensalidades cadastrados com sucesso!');
+            } catch (error) {
+                showNotification(`Erro: ${error.message}`, 'error');
+            }
+        });
+
+        // --- DASHBOARD TABLE LOGIC ---
+        const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+        let currentView = 'pagamento';
+        let selectedYear = new Date().getFullYear();
+        let dataStore = [];
+        
+        function el(tag, attrs={}, html='') {
+            const e = document.createElement(tag);
+            Object.entries(attrs).forEach(([k,v]) => e.setAttribute(k,v));
+            if(html!==undefined) e.innerHTML = html;
+            return e;
+        }
+        function money(v){ return (v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
+        function statusClass(status, view){
+            if(view==='pagamento'){
+                if(status==='Pago') return 'st-pago';
+                if(status==='Parcial') return 'st-parcial';
+                return 'st-pendente';
+            } else {
+                if(status==='Enviada') return 'st-enviada';
+                if(status==='Falhou') return 'st-falhou';
+                return 'st-aguardando';
+            }
+        }
+        
+        function renderizarEstatisticas(clientesDoAno) {
+            const hoje = new Date();
+            const mesAtualIndex = hoje.getMonth();
+            document.getElementById('ano-acumulado-titulo').textContent = `Acumulado de ${selectedYear}`;
+            document.getElementById('mes-atual-titulo').textContent = (selectedYear === hoje.getFullYear()) ? `Mês Atual (${meses[mesAtualIndex]})` : 'Mês';
+
+            let faturamentoAnual = 0, totalRecebidoAnual = 0, totalInadimplenteAnual = 0;
+            let previstoMes = 0, recebidoMes = 0, inadimplenteMes = 0;
+            
+            const clientesFiltrados = clientesDoAno.map(c => ({
+                ...c,
+                mensalidades: c.mensalidades.filter(m => m.ano === selectedYear)
+            }));
+
+            clientesFiltrados.forEach(cliente => {
+                cliente.mensalidades.forEach(mensalidade => {
+                    faturamentoAnual += cliente.valor_mensalidade; 
+                     if (mensalidade.status_pagamento === 'Pago') {
+                        totalRecebidoAnual += cliente.valor_mensalidade;
+                        if (mensalidade.mes - 1 === mesAtualIndex && selectedYear === hoje.getFullYear()) recebidoMes += cliente.valor_mensalidade;
+                    } else if (mensalidade.status_pagamento === 'Pendente') {
+                         const dataVencimento = new Date(selectedYear, mensalidade.mes - 1, cliente.dia_vencimento);
+                         if (dataVencimento < hoje) {
+                            totalInadimplenteAnual += cliente.valor_mensalidade;
+                            if (mensalidade.mes - 1 === mesAtualIndex && selectedYear === hoje.getFullYear()) inadimplenteMes += cliente.valor_mensalidade;
+                         }
+                    }
+                    if(mensalidade.mes - 1 === mesAtualIndex && selectedYear === hoje.getFullYear()) previstoMes += cliente.valor_mensalidade;
+                });
+            });
+
+            const statsMap = {
+                'faturamento-anual': faturamentoAnual,
+                'total-recebido-anual': totalRecebidoAnual,
+                'total-inadimplente-anual': totalInadimplenteAnual,
+                'previsto-mes': previstoMes,
+                'recebido-mes': recebidoMes,
+                'inadimplente-mes': inadimplenteMes
+            };
+
+            for (const id in statsMap) {
+                document.getElementById(id).textContent = money(statsMap[id]);
+            }
+        }
+
+        function renderHeader(){
+            const thead = document.getElementById('thead');
+            if (!thead) return;
+            const cols = ['Nome Fantasia','Venc.','Telefone','Email','Valor', ...meses];
+            thead.innerHTML = '<tr>'+cols.map(h=>`<th>${h}</th>`).join('')+'</tr>';
+        }
+
+        function renderBody(){
+            const tbody = document.getElementById('tbody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            const rows = dataStore.map(c=>{
+                const pagMes = {};
+                c.mensalidades.filter(m=>m.ano===selectedYear).forEach(m=>{
+                pagMes[m.mes] = { pagamento:m.status_pagamento, cobranca:m.status_cobranca };
+                });
+                return {...c, _mes:pagMes};
+            });
+
+            rows.forEach(c=>{
+                const tr = el('tr');
+                const base = `
+                    <td>${c.nome_fantasia||''}</td>
+                    <td>Dia ${String(c.dia_vencimento||1).padStart(2,'0')}</td>
+                    <td>${c.telefone||''}</td>
+                    <td>${c.email||''}</td>
+                    <td>${money(c.valor_mensalidade)}</td>
+                `;
+                tr.insertAdjacentHTML('beforeend', base);
+
+                for(let i=1;i<=12;i++){
+                    const m = c._mes[i];
+                    if(!m){ tr.insertAdjacentHTML('beforeend','<td></td>'); continue; }
+                    const st = currentView==='pagamento' ? m.pagamento : m.cobranca;
+                    const cls = statusClass(st, currentView);
+                    const cell = el('td');
+                    const wrap = el('div',{class:'status-wrap'});
+                    const span = el('span',{class:`status ${cls}`}, st);
+                    const menu = el('div',{class:'status-menu'});
+
+                    const opts = (currentView==='pagamento' ? ['Pago','Pendente','Parcial'] : ['Enviada','Aguardando','Falhou']);
+                    menu.innerHTML = opts.map(o=>`<div class="status-opt" data-id="${c.id}" data-mes="${i}" data-val="${o}">${o}</div>`).join('');
+
+                    wrap.appendChild(span); wrap.appendChild(menu); cell.appendChild(wrap); tr.appendChild(cell);
+                }
+                tbody.appendChild(tr);
+            });
+            renderizarEstatisticas(dataStore);
+        }
+
+        document.addEventListener('click', (ev)=>{
+            const st = ev.target.closest('.status');
+            const wrap = ev.target.closest('.status-wrap');
+            document.querySelectorAll('.status-wrap.open').forEach(w=>{ if(w!==wrap) w.classList.remove('open'); });
+            if(st && wrap){ wrap.classList.toggle('open'); }
+            else if(!ev.target.closest('.status-wrap')){ document.querySelectorAll('.status-wrap.open').forEach(w=>w.classList.remove('open')); }
+
+            const opt = ev.target.closest('.status-opt');
+            if(opt){
+                const id = Number(opt.dataset.id);
+                const mes = Number(opt.dataset.mes);
+                const val = opt.dataset.val;
+
+                const payload = { cliente_id:id, ano:selectedYear, mes };
+                if(currentView==='pagamento') payload.status_pagamento = val;
+                else payload.status_cobranca = val;
+
+                sb.from('mensalidades')
+                .upsert(payload, { onConflict:'cliente_id, ano, mes' })
+                .then(()=> loadData() );
+            }
+        });
+
+        const viewToggle = document.getElementById('view-toggle');
+        viewToggle.addEventListener('click', (e)=>{
+            if(e.target.tagName!=='BUTTON') return;
+            viewToggle.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+            e.target.classList.add('active');
+            currentView = e.target.dataset.view;
+            renderBody();
+        });
+
+        const yearFilter = document.getElementById('year-filter');
+        (function fillYears(){
+            const now = new Date().getFullYear();
+            yearFilter.innerHTML = '';
+            for(let y=now-5; y<=now+5; y++){
+                const op = el('option', {value:String(y)}, y);
+                if(y===selectedYear) op.selected = true;
+                yearFilter.appendChild(op);
+            }
+        })();
+        yearFilter.addEventListener('change', e=>{
+            selectedYear = Number(e.target.value);
+            renderBody();
+        });
+
+        async function loadData(){
+            const { data:clientes, error:err1 } = await sb.from('clientes').select('*').order('nome_fantasia',{ascending:true});
+            if(err1){ console.error(err1); return; }
+
+            const { data:mensal, error:err2 } = await sb.from('mensalidades').select('*');
+            if(err2){ console.error(err2); return; }
+
+            dataStore = clientes.map(c=> ({ ...c, mensalidades: mensal.filter(m=>m.cliente_id===c.id) }));
+            renderBody();
+        }
+
+        // --- INICIALIZAÇÃO E LÓGICA PRINCIPAL ---
+        profileBtn.addEventListener('click', () => profileMenu.classList.toggle('active'));
+        
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            if (loginEmail.value === 'admin' && loginPassword.value === 'admin') {
+                body.className = 'show-dashboard';
+                showPage('dashboard');
+                renderHeader();
+                loadData();
+            } else {
+                showNotification('Usuário ou senha inválidos. Use admin/admin.', 'error');
+            }
+        });
+        
+        logoutBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            body.className = 'show-login';
+        });
+
+        navLinks.forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const page = link.dataset.page;
+                if(page) {
+                    showPage(page);
+                }
+            });
+        });
+
+        // --- Sidebar AI Animation ---
+        const aiCanvas = document.getElementById('ai-animation-canvas');
+        if (aiCanvas) {
+            const ctx = aiCanvas.getContext('2d');
+            let particles = [];
+            const numParticles = 30;
+
+            function resizeCanvas() {
+                aiCanvas.width = aiCanvas.offsetWidth;
+                aiCanvas.height = aiCanvas.offsetHeight;
+            }
+
+            class Particle {
+                constructor(x, y) {
+                    this.x = x || Math.random() * aiCanvas.width;
+                    this.y = y || Math.random() * aiCanvas.height;
+                    this.vx = Math.random() * 1 - 0.5;
+                    this.vy = Math.random() * 1 - 0.5;
+                    this.radius = 1.5;
+                }
+                draw() {
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 245, 160, 0.7)';
+                    ctx.fill();
+                }
+                update() {
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    if (this.x < 0 || this.x > aiCanvas.width) this.vx *= -1;
+                    if (this.y < 0 || this.y > aiCanvas.height) this.vy *= -1;
+                }
+            }
+
+            function createParticles() {
+                particles = [];
+                for (let i = 0; i < numParticles; i++) {
+                    particles.push(new Particle());
+                }
+            }
+
+            function connectParticles() {
+                for (let i = 0; i < numParticles; i++) {
+                    for (let j = i + 1; j < numParticles; j++) {
+                        const dx = particles[i].x - particles[j].x;
+                        const dy = particles[i].y - particles[j].y;
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+
+                        if (dist < 80) {
+                            ctx.beginPath();
+                            ctx.moveTo(particles[i].x, particles[i].y);
+                            ctx.lineTo(particles[j].x, particles[j].y);
+                            ctx.strokeStyle = `rgba(0, 245, 160, ${1 - dist / 80})`;
+                            ctx.lineWidth = 0.5;
+                            ctx.stroke();
+                        }
+                    }
+                }
+            }
+
+            function animate() {
+                ctx.clearRect(0, 0, aiCanvas.width, aiCanvas.height);
+                particles.forEach(p => {
+                    p.update();
+                    p.draw();
+                });
+                connectParticles();
+                requestAnimationFrame(animate);
+            }
+
+            window.addEventListener('resize', () => {
+                resizeCanvas();
+                createParticles();
+            });
+
+            resizeCanvas();
+            createParticles();
+            animate();
+        }
+        
+        particlesJS('particles-js',{ "particles": { "number": { "value": 60, "density": { "enable": true, "value_area": 800 } }, "color": { "value": "#00f5a0" }, "shape": { "type": "circle" }, "opacity": { "value": 0.5, "random": true, "anim": { "enable": true, "speed": 1, "opacity_min": 0.1, "sync": false } }, "size": { "value": 3, "random": true }, "line_linked": { "enable": true, "distance": 150, "color": "#00f5a0", "opacity": 0.2, "width": 1 }, "move": { "enable": true, "speed": 2, "direction": "none", "random": false, "straight": false, "out_mode": "out", "bounce": false } }, "interactivity": { "detect_on": "canvas", "events": { "onhover": { "enable": true, "mode": "grab" }, "onclick": { "enable": false }, "resize": true }, "modes": { "grab": { "distance": 140, "line_linked": { "opacity": 0.5 } } } }, "retina_detect": true });
+
+        // --- EVO API LOGIC ---
+        const EVO_API_URL = "https://api.infodash.com.br";
+        const EVO_API_KEY = "02cd32793dc2868b8d5625d2def97481";
+        
+        function logToEvoScreen(message) {
+            console.log(message);
+            const p = document.createElement('p');
+            const timestamp = new Date().toLocaleTimeString();
+            p.textContent = `[${timestamp}] ${message}`;
+            eventLog.appendChild(p);
+            eventLog.scrollTop = eventLog.scrollHeight;
+        }
+        
+        async function saveInstanceResultToSupabase(instanceName, status) {
+            logToEvoScreen(`Salvando instância ${instanceName} com status ${status}...`);
+            const { error } = await sb
+                .from('instancias_api')
+                .upsert({ 
+                    instance_name: instanceName,
+                    api_key: EVO_API_KEY, 
+                    status: status 
+                }, { onConflict: 'instance_name' });
+
+            if (error) {
+                logToEvoScreen(`Erro ao salvar status: ${error.message}`);
+                showNotification(`Erro ao salvar no banco de dados: ${error.message}`, 'error');
+            } else {
+                logToEvoScreen('Status salvo com sucesso no Supabase.');
+                await loadAndDisplaySavedInstances();
+            }
+        }
+
+
+        async function loadAndDisplaySavedInstances() {
+            savedInstancesList.innerHTML = '<p>Carregando instâncias...</p>';
+            const { data, error } = await sb.from('instancias_api').select('*');
+
+            if (error) {
+                savedInstancesList.innerHTML = '<p>Erro ao carregar instâncias.</p>';
+                return;
+            }
+
+            if (data.length === 0) {
+                savedInstancesList.innerHTML = '<p>Nenhuma instância salva encontrada.</p>';
+                return;
+            }
+
+            savedInstancesList.innerHTML = '';
+            data.forEach(instance => {
+                const item = document.createElement('div');
+                item.className = 'instance-item';
+                const statusClass = instance.status === 'connected' ? 'status-connected' : 'status-disconnected';
+                
+                item.innerHTML = `
+                    <div class="instance-item-info">
+                        <span class="instance-name">${instance.instance_name}</span>
+                        <span class="instance-status ${statusClass}">Status: ${instance.status || 'disconnected'}</span>
+                    </div>
+                    <div class="instance-actions">
+                        <button class="btn reconnect-btn" data-instance-name="${instance.instance_name}">Conectar</button>
+                    </div>
+                `;
+                savedInstancesList.appendChild(item);
+            });
+        }
+        
+        savedInstancesList.addEventListener('click', (e) => {
+            if (e.target.classList.contains('reconnect-btn')) {
+                const instanceName = e.target.dataset.instanceName;
+                logToEvoScreen(`Tentando reconectar à instância: ${instanceName}`);
+                instanceNameInput.value = instanceName;
+                qrcodeContainer.innerHTML = `<p id="instance-status">Conectando à instância existente "${instanceName}"...</p>`;
+
+                if (connectionInterval) clearInterval(connectionInterval);
+                eventLog.innerHTML = '';
+                checkInstanceConnection(instanceName);
+            }
+        });
+
+        createInstanceForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const instanceName = instanceNameInput.value.trim();
+            if (!instanceName) { showNotification('Por favor, insira um nome para a instância.', 'error'); return; }
+            
+            if (connectionInterval) clearInterval(connectionInterval);
+            eventLog.innerHTML = '';
+            
+            logToEvoScreen(`Iniciando criação da instância: ${instanceName}`);
+            qrcodeContainer.innerHTML = `<p id="instance-status">Criando instância "${instanceName}"...</p>`;
+            try {
+                const createResponse = await fetch(`${EVO_API_URL}/instance/create`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'apikey': EVO_API_KEY },
+                    body: JSON.stringify({ instanceName: instanceName, qrcode: true, integration: "WHATSAPP-BAILEYS" })
+                });
+                const responseData = await createResponse.json();
+                logToEvoScreen('Resposta da API recebida.');
+                if (!createResponse.ok) throw new Error(responseData.message || JSON.stringify(responseData));
+                
+                if (responseData.qrcode && responseData.qrcode.base64) {
+                    qrcodeContainer.innerHTML = `<img src="${responseData.qrcode.base64}" alt="QR Code do WhatsApp"><p id="instance-status">Aguardando leitura do QR Code...</p>`;
+                    logToEvoScreen("QR Code recebido e exibido.");
+                } else {
+                    qrcodeContainer.innerHTML = `<p id="instance-status">Instância criada! A obter QR Code...</p>`;
+                    logToEvoScreen("Instância criada, aguardando QR Code na próxima verificação.");
+                }
+                checkInstanceConnection(instanceName);
+            } catch(error) {
+                const errorMessage = `Erro ao criar instância: ${error.message}`;
+                qrcodeContainer.innerHTML = `<p id="instance-status">${errorMessage}</p>`;
+                logToEvoScreen(errorMessage);
+            }
+        });
+        
+        function checkInstanceConnection(instanceName) {
+            let attempts = 0;
+            const maxAttempts = 100; 
+            logToEvoScreen("Iniciando verificação de status da conexão...");
+            connectionInterval = setInterval(async () => {
+                if (attempts >= maxAttempts) {
+                    clearInterval(connectionInterval);
+                    qrcodeContainer.innerHTML = `<p id="instance-status">Tempo esgotado para obter o QR Code.</p>`;
+                    logToEvoScreen('Tempo esgotado para conectar.');
+                    await saveInstanceResultToSupabase(instanceName, 'disconnected');
+                    return;
+                }
+                try {
+                    logToEvoScreen(`Tentativa ${attempts + 1}/${maxAttempts}: Verificando status...`);
+                    const connectResponse = await fetch(`${EVO_API_URL}/instance/connect/${instanceName}`, { headers: { 'apikey': EVO_API_KEY } });
+                    const data = await connectResponse.json();
+                    if (data.instance && data.instance.state === 'open') {
+                        clearInterval(connectionInterval);
+                        qrcodeContainer.innerHTML = `<p id="instance-status" class="connection-success">✅ Instância "${instanceName}" conectada com sucesso!</p>`;
+                        logToEvoScreen("Conexão estabelecida com sucesso!");
+                        await saveInstanceResultToSupabase(instanceName, 'connected');
+                    } else if (data.qrcode && data.qrcode.base64) {
+                        qrcodeContainer.innerHTML = `<img src="${data.qrcode.base64}" alt="QR Code do WhatsApp"><p id="instance-status">Aguardando leitura do QR Code...</p>`;
+                        logToEvoScreen("QR Code atualizado.");
+                    } else {
+                        logToEvoScreen(`Aguardando conexão... (Status atual: ${data.instance?.state || 'desconhecido'})`);
+                    }
+                } catch (error) {
+                    logToEvoScreen(`Erro na verificação: ${error.message}. Tentando novamente...`);
+                }
+                attempts++;
+            }, 3000); 
+        }
+
+    });
+    </script>
+</body>
+</html>
