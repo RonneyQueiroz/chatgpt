@@ -682,13 +682,13 @@
         
         loginForm.addEventListener('submit', (e) => {
             e.preventDefault();
-            if (loginEmail.value === 'admin' && loginPassword.value === 'admin') {
+            if (loginEmail.value === 'admin' && loginPassword.value === 'marterkey') {
                 body.className = 'show-dashboard';
                 showPage('dashboard');
                 renderHeader();
                 loadData();
             } else {
-                showNotification('Usuário ou senha inválidos. Use admin/admin.', 'error');
+                showNotification('Usuário ou senha inválidos. Use admin/marterkey.', 'error');
             }
         });
         
